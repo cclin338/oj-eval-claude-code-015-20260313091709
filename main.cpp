@@ -4,37 +4,48 @@
 #include <vector>
 #include <algorithm>
 #include <cstring>
-#include <map>
-#include <set>
 
 using namespace std;
 
 const string DATA_FILE = "storage.dat";
 
+struct Record {
+    char index[65];
+    int value;
+
+    Record() : value(0) {
+        memset(index, 0, 65);
+    }
+
+    Record(const string& idx, int val) : value(val) {
+        memset(index, 0, 65);
+        strncpy(index, idx.c_str(), 64);
+    }
+
+    bool operator<(const Record& other) const {
+        int cmp = strcmp(index, other.index);
+        if (cmp != 0) return cmp < 0;
+        return value < other.value;
+    }
+
+    bool operator==(const Record& other) const {
+        return strcmp(index, other.index) == 0 && value == other.value;
+    }
+};
+
 int main() {
     ios::sync_with_stdio(false);
     cin.tie(nullptr);
 
-    // Load existing data from file
-    map<string, set<int>> storage;
+    // Load existing data
+    vector<Record> records;
 
     ifstream inFile(DATA_FILE, ios::binary);
     if (inFile) {
-        string index;
-        int value;
-        char indexBuf[65];
-
-        while (inFile.read(indexBuf, 64)) {
-            indexBuf[64] = '\0';
-            inFile.read(reinterpret_cast<char*>(&value), sizeof(int));
-
-            // Find actual string length
-            int len = 0;
-            while (len < 64 && indexBuf[len] != '\0') len++;
-
-            if (len > 0) {
-                index = string(indexBuf, len);
-                storage[index].insert(value);
+        Record rec;
+        while (inFile.read(reinterpret_cast<char*>(&rec), sizeof(Record))) {
+            if (rec.index[0] != '\0') {
+                records.push_back(rec);
             }
         }
         inFile.close();
@@ -51,49 +62,60 @@ int main() {
             string index;
             int value;
             cin >> index >> value;
-            storage[index].insert(value);
+
+            Record newRec(index, value);
+
+            // Check if already exists
+            bool exists = false;
+            for (const auto& rec : records) {
+                if (rec == newRec) {
+                    exists = true;
+                    break;
+                }
+            }
+
+            if (!exists) {
+                records.push_back(newRec);
+            }
+
         } else if (command == "delete") {
             string index;
             int value;
             cin >> index >> value;
 
-            auto it = storage.find(index);
-            if (it != storage.end()) {
-                it->second.erase(value);
-                if (it->second.empty()) {
-                    storage.erase(it);
-                }
-            }
+            Record toRemove(index, value);
+
+            auto it = remove(records.begin(), records.end(), toRemove);
+            records.erase(it, records.end());
+
         } else if (command == "find") {
             string index;
             cin >> index;
 
-            auto it = storage.find(index);
-            if (it == storage.end() || it->second.empty()) {
+            vector<int> result;
+            for (const auto& rec : records) {
+                if (strcmp(rec.index, index.c_str()) == 0) {
+                    result.push_back(rec.value);
+                }
+            }
+
+            if (result.empty()) {
                 cout << "null\n";
             } else {
-                bool first = true;
-                for (int val : it->second) {
-                    if (!first) cout << " ";
-                    cout << val;
-                    first = false;
+                sort(result.begin(), result.end());
+                for (size_t j = 0; j < result.size(); j++) {
+                    if (j > 0) cout << " ";
+                    cout << result[j];
                 }
                 cout << "\n";
             }
         }
     }
 
-    // Save data back to file
+    // Save data back
     ofstream outFile(DATA_FILE, ios::binary | ios::trunc);
-    char indexBuf[65];
-
-    for (const auto& [index, values] : storage) {
-        for (int value : values) {
-            memset(indexBuf, 0, 65);
-            strncpy(indexBuf, index.c_str(), 64);
-            outFile.write(indexBuf, 64);
-            outFile.write(reinterpret_cast<const char*>(&value), sizeof(int));
-        }
+    for (const auto& rec : records) {
+        outFile.write(reinterpret_cast<const char*>(&rec), sizeof(Record));
     }
     outFile.close();
 
